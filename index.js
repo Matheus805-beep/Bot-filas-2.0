@@ -81,6 +81,7 @@ client.on("interactionCreate", async interaction => {
 
     if (interaction.commandName === "criarpainel") {
 
+      // 🔒 Apenas ADMIN
       if (!interaction.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
         return interaction.reply({
           content: "❌ Apenas administradores podem criar o painel.",
@@ -108,49 +109,48 @@ client.on("interactionCreate", async interaction => {
     }
   }
 
-  // ===== MENU =====
-  if (interaction.isStringSelectMenu()) {
+  // ===== MENU SELEÇÃO =====
+  if (interaction.isStringSelectMenu() && interaction.customId === "selecionar_tipo") {
 
-    if (interaction.customId === "selecionar_tipo") {
+    const tipo = interaction.values[0];
 
-      const tipo = interaction.values[0];
+    // ✅ Responde imediatamente para evitar "interação falhou"
+    await interaction.reply({
+      content: `✅ Painel ${tipo} está sendo criado...`,
+      ephemeral: true
+    });
 
-      await interaction.update({
-        content: `✅ Criando filas ${tipo}...`,
-        components: []
-      });
+    // Criar filas em background
+    for (const valor of valores) {
 
-      for (const valor of valores) {
+      const filaId = `${tipo}_${valor}_${Date.now()}`;
+      filas[filaId] = [];
 
-        const filaId = `${tipo}_${valor}_${Date.now()}`;
-        filas[filaId] = [];
-
-        const embed = new EmbedBuilder()
-          .setColor("Blue")
-          .setTitle(`🎮 ${tipo}`)
-          .setDescription(
-            `💰 Valor: R$${valor}\n👥 Jogadores (0/2):\nNenhum jogador na fila`
-          );
-
-        const botoes = new ActionRowBuilder().addComponents(
-          new ButtonBuilder()
-            .setCustomId(`entrar_${filaId}`)
-            .setLabel("Entrar")
-            .setStyle(ButtonStyle.Success),
-
-          new ButtonBuilder()
-            .setCustomId(`sair_${filaId}`)
-            .setLabel("Sair")
-            .setStyle(ButtonStyle.Danger)
+      const embed = new EmbedBuilder()
+        .setColor("Blue")
+        .setTitle(`🎮 ${tipo}`)
+        .setDescription(
+          `💰 Valor: R$${valor}\n👥 Jogadores (0/2):\nNenhum jogador na fila`
         );
 
-        const mensagem = await interaction.channel.send({
-          embeds: [embed],
-          components: [botoes]
-        });
+      const botoes = new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId(`entrar_${filaId}`)
+          .setLabel("Entrar")
+          .setStyle(ButtonStyle.Success),
 
-        mensagensFilas[filaId] = mensagem;
-      }
+        new ButtonBuilder()
+          .setCustomId(`sair_${filaId}`)
+          .setLabel("Sair")
+          .setStyle(ButtonStyle.Danger)
+      );
+
+      const mensagem = await interaction.channel.send({
+        embeds: [embed],
+        components: [botoes]
+      });
+
+      mensagensFilas[filaId] = mensagem;
     }
   }
 
@@ -180,6 +180,7 @@ client.on("interactionCreate", async interaction => {
       await interaction.reply({ content: "Entrou na fila!", ephemeral: true });
       atualizarEmbed(filaId);
 
+      // ✅ Quando 2 players entram
       if (fila.length === 2) {
 
         const guild = interaction.guild;
