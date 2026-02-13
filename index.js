@@ -24,16 +24,16 @@ const client = new Client({
 });
 
 const valores = [100, 50, 20, 10, 5, 2, 1];
+
 let filas = {};
 let mensagensFilas = {};
-let modosFilas = {};
+let modoGlobal = "1v1";
 
-// Delay
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-// ================= COMANDO =================
+// ================= REGISTRAR SLASH =================
 const commands = [
   new SlashCommandBuilder()
     .setName("criarpainel")
@@ -54,24 +54,32 @@ client.once("ready", () => {
 });
 
 // ================= ATUALIZAR EMBED =================
-async function atualizarEmbed(filaId) {
-  const fila = filas[filaId];
-  const msg = mensagensFilas[filaId];
-  const modo = modosFilas[filaId];
+async function atualizarEmbed(filaBaseId) {
 
+  const msg = mensagensFilas[filaBaseId];
   if (!msg) return;
 
-  const jogadores = fila.length
-    ? fila.map(id => `<@${id}>`).join("\n")
-    : "Nenhum jogador na fila";
+  const filaInfinito = filas[`${filaBaseId}_infinito`] || [];
+  const filaNormal = filas[`${filaBaseId}_normal`] || [];
+
+  const listaInfinito = filaInfinito.length
+    ? filaInfinito.map(id => `<@${id}> — GEL INFINITO`).join("\n")
+    : "Nenhum jogador";
+
+  const listaNormal = filaNormal.length
+    ? filaNormal.map(id => `<@${id}> — GEL NORMAL`).join("\n")
+    : "Nenhum jogador";
+
+  const valor = filaBaseId.split("_")[1];
 
   const embed = new EmbedBuilder()
     .setColor("Blue")
-    .setTitle(msg.embeds[0].data.title)
+    .setTitle(`🎮 Fila R$${valor}`)
     .setDescription(
-      `💰 Valor: ${filaId.split("_")[1]}\n` +
-      `Modo: ${modo}\n` +
-      `👥 Jogadores (${fila.length}/2):\n${jogadores}`
+      `💰 Valor: ${valor}\n` +
+      `Modo: ${modoGlobal}\n\n` +
+      `🟢 GEL INFINITO (${filaInfinito.length}/2)\n${listaInfinito}\n\n` +
+      `🔵 GEL NORMAL (${filaNormal.length}/2)\n${listaNormal}`
     );
 
   await msg.edit({ embeds: [embed] });
@@ -82,6 +90,7 @@ client.on("interactionCreate", async interaction => {
 
   // ===== SLASH =====
   if (interaction.isChatInputCommand()) {
+
     if (interaction.commandName === "criarpainel") {
 
       if (!interaction.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
@@ -110,44 +119,44 @@ client.on("interactionCreate", async interaction => {
 
   // ===== SELECT MENU =====
   if (interaction.isStringSelectMenu()) {
+
     if (interaction.customId === "select_modo") {
 
-      const modoEscolhido = interaction.values[0];
+      modoGlobal = interaction.values[0];
 
-      // RESPONDE IMEDIATAMENTE (corrige interação falhou)
       await interaction.deferReply({ ephemeral: true });
-
-      await interaction.editReply(`✅ Criando filas no modo **${modoEscolhido}**...`);
+      await interaction.editReply(`✅ Criando filas no modo **${modoGlobal}**...`);
 
       for (const valor of valores) {
 
-        const filaId = `fila_${valor}_${Date.now()}`;
+        const filaBaseId = `fila_${valor}_${Date.now()}`;
 
-        filas[filaId] = [];
-        modosFilas[filaId] = modoEscolhido;
+        filas[`${filaBaseId}_infinito`] = [];
+        filas[`${filaBaseId}_normal`] = [];
 
         const embed = new EmbedBuilder()
           .setColor("Blue")
           .setTitle(`🎮 Fila R$${valor}`)
           .setDescription(
             `💰 Valor: ${valor}\n` +
-            `Modo: ${modoEscolhido}\n` +
-            `👥 Jogadores (0/2):\nNenhum jogador na fila`
+            `Modo: ${modoGlobal}\n\n` +
+            `🟢 GEL INFINITO (0/2)\nNenhum jogador\n\n` +
+            `🔵 GEL NORMAL (0/2)\nNenhum jogador`
           );
 
         const botoes = new ActionRowBuilder().addComponents(
           new ButtonBuilder()
-            .setCustomId(`entrar_infinito_${filaId}`)
+            .setCustomId(`entrar_infinito_${filaBaseId}`)
             .setLabel("GEL INFINITO")
             .setStyle(ButtonStyle.Success),
 
           new ButtonBuilder()
-            .setCustomId(`entrar_normal_${filaId}`)
+            .setCustomId(`entrar_normal_${filaBaseId}`)
             .setLabel("GEL NORMAL")
             .setStyle(ButtonStyle.Primary),
 
           new ButtonBuilder()
-            .setCustomId(`sair_x_${filaId}`)
+            .setCustomId(`sair_${filaBaseId}`)
             .setLabel("SAIR")
             .setStyle(ButtonStyle.Danger)
         );
@@ -157,9 +166,9 @@ client.on("interactionCreate", async interaction => {
           components: [botoes]
         });
 
-        mensagensFilas[filaId] = mensagem;
+        mensagensFilas[filaBaseId] = mensagem;
 
-        await sleep(2000); // delay entre filas
+        await sleep(1500);
       }
     }
   }
@@ -169,29 +178,33 @@ client.on("interactionCreate", async interaction => {
 
     const parts = interaction.customId.split("_");
 
-    // SAIR
+    // ===== SAIR =====
     if (parts[0] === "sair") {
-      const filaId = parts.slice(2).join("_");
-      const fila = filas[filaId];
-      if (!fila) return;
 
-      filas[filaId] = fila.filter(id => id !== interaction.user.id);
+      const filaBaseId = parts.slice(1).join("_");
+
+      const infinitoId = `${filaBaseId}_infinito`;
+      const normalId = `${filaBaseId}_normal`;
+
+      filas[infinitoId] = (filas[infinitoId] || []).filter(id => id !== interaction.user.id);
+      filas[normalId] = (filas[normalId] || []).filter(id => id !== interaction.user.id);
 
       await interaction.reply({ content: "Você saiu da fila.", ephemeral: true });
-      return atualizarEmbed(filaId);
+
+      return atualizarEmbed(filaBaseId);
     }
 
-    // ENTRAR
+    // ===== ENTRAR =====
     if (parts[0] === "entrar") {
 
       const modoBotao = parts[1];
-      const filaId = parts.slice(2).join("_");
+      const filaBaseId = parts.slice(2).join("_");
 
+      const filaId = `${filaBaseId}_${modoBotao}`;
       const fila = filas[filaId];
-      if (!fila) return;
 
       if (fila.includes(interaction.user.id))
-        return interaction.reply({ content: "Você já está na fila.", ephemeral: true });
+        return interaction.reply({ content: "Você já está nessa fila.", ephemeral: true });
 
       if (fila.length >= 2)
         return interaction.reply({ content: "Fila cheia.", ephemeral: true });
@@ -199,18 +212,18 @@ client.on("interactionCreate", async interaction => {
       fila.push(interaction.user.id);
 
       await interaction.reply({
-        content: `Você entrou (${modoBotao.toUpperCase()})!`,
+        content: `Você entrou na fila ${modoBotao.toUpperCase()}!`,
         ephemeral: true
       });
 
-      atualizarEmbed(filaId);
+      atualizarEmbed(filaBaseId);
 
       if (fila.length === 2) {
 
         const guild = interaction.guild;
 
         const canal = await guild.channels.create({
-          name: `partida-${Date.now()}`,
+          name: `partida-${modoBotao}-${Date.now()}`,
           type: ChannelType.GuildText,
           permissionOverwrites: [
             { id: guild.id, deny: [PermissionsBitField.Flags.ViewChannel] },
@@ -232,11 +245,11 @@ client.on("interactionCreate", async interaction => {
         });
 
         filas[filaId] = [];
-        atualizarEmbed(filaId);
+        atualizarEmbed(filaBaseId);
       }
     }
 
-    // FINALIZAR
+    // ===== FINALIZAR =====
     if (interaction.customId.startsWith("finalizar_")) {
 
       const [, player1, player2] = interaction.customId.split("_");
@@ -252,7 +265,6 @@ client.on("interactionCreate", async interaction => {
       }, 5000);
     }
   }
-
 });
 
 client.login(TOKEN);
