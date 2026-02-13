@@ -17,7 +17,6 @@ const {
 
 const TOKEN = process.env.TOKEN;
 const CLIENT_ID = process.env.CLIENT_ID;
-const GUILD_ID = process.env.GUILD_ID;
 
 const client = new Client({
   intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers]
@@ -27,13 +26,13 @@ const valores = [100, 50, 20, 10, 5, 2, 1];
 
 let filas = {};
 let mensagensFilas = {};
-let modoGlobal = "1v1";
+let modoPorServidor = {};
 
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-// ================= REGISTRAR SLASH =================
+// ================= REGISTRAR SLASH GLOBAL =================
 const commands = [
   new SlashCommandBuilder()
     .setName("criarpainel")
@@ -44,7 +43,7 @@ const rest = new REST({ version: "10" }).setToken(TOKEN);
 
 (async () => {
   await rest.put(
-    Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID),
+    Routes.applicationCommands(CLIENT_ID),
     { body: commands }
   );
 })();
@@ -54,7 +53,7 @@ client.once("ready", () => {
 });
 
 // ================= ATUALIZAR EMBED =================
-async function atualizarEmbed(filaBaseId) {
+async function atualizarEmbed(filaBaseId, guildId) {
 
   const msg = mensagensFilas[filaBaseId];
   if (!msg) return;
@@ -71,13 +70,14 @@ async function atualizarEmbed(filaBaseId) {
     : "Nenhum jogador";
 
   const valor = filaBaseId.split("_")[1];
+  const modo = modoPorServidor[guildId] || "1v1";
 
   const embed = new EmbedBuilder()
     .setColor("Blue")
     .setTitle(`🎮 Fila R$${valor}`)
     .setDescription(
       `💰 Valor: ${valor}\n` +
-      `Modo: ${modoGlobal}\n\n` +
+      `Modo: ${modo}\n\n` +
       `🟢 GEL INFINITO (${filaInfinito.length}/2)\n${listaInfinito}\n\n` +
       `🔵 GEL NORMAL (${filaNormal.length}/2)\n${listaNormal}`
     );
@@ -122,14 +122,15 @@ client.on("interactionCreate", async interaction => {
 
     if (interaction.customId === "select_modo") {
 
-      modoGlobal = interaction.values[0];
+      const guildId = interaction.guild.id;
+      modoPorServidor[guildId] = interaction.values[0];
 
       await interaction.deferReply({ ephemeral: true });
-      await interaction.editReply(`✅ Criando filas no modo **${modoGlobal}**...`);
+      await interaction.editReply(`✅ Criando filas no modo **${modoPorServidor[guildId]}**...`);
 
       for (const valor of valores) {
 
-        const filaBaseId = `fila_${valor}_${Date.now()}`;
+        const filaBaseId = `${guildId}_fila_${valor}_${Date.now()}`;
 
         filas[`${filaBaseId}_infinito`] = [];
         filas[`${filaBaseId}_normal`] = [];
@@ -139,7 +140,7 @@ client.on("interactionCreate", async interaction => {
           .setTitle(`🎮 Fila R$${valor}`)
           .setDescription(
             `💰 Valor: ${valor}\n` +
-            `Modo: ${modoGlobal}\n\n` +
+            `Modo: ${modoPorServidor[guildId]}\n\n` +
             `🟢 GEL INFINITO (0/2)\nNenhum jogador\n\n` +
             `🔵 GEL NORMAL (0/2)\nNenhum jogador`
           );
@@ -168,7 +169,7 @@ client.on("interactionCreate", async interaction => {
 
         mensagensFilas[filaBaseId] = mensagem;
 
-        await sleep(1500);
+        await sleep(1200);
       }
     }
   }
@@ -178,7 +179,7 @@ client.on("interactionCreate", async interaction => {
 
     const parts = interaction.customId.split("_");
 
-    // ===== SAIR =====
+    // SAIR
     if (parts[0] === "sair") {
 
       const filaBaseId = parts.slice(1).join("_");
@@ -191,10 +192,10 @@ client.on("interactionCreate", async interaction => {
 
       await interaction.reply({ content: "Você saiu da fila.", ephemeral: true });
 
-      return atualizarEmbed(filaBaseId);
+      return atualizarEmbed(filaBaseId, interaction.guild.id);
     }
 
-    // ===== ENTRAR =====
+    // ENTRAR
     if (parts[0] === "entrar") {
 
       const modoBotao = parts[1];
@@ -216,7 +217,7 @@ client.on("interactionCreate", async interaction => {
         ephemeral: true
       });
 
-      atualizarEmbed(filaBaseId);
+      atualizarEmbed(filaBaseId, interaction.guild.id);
 
       if (fila.length === 2) {
 
@@ -245,11 +246,11 @@ client.on("interactionCreate", async interaction => {
         });
 
         filas[filaId] = [];
-        atualizarEmbed(filaBaseId);
+        atualizarEmbed(filaBaseId, interaction.guild.id);
       }
     }
 
-    // ===== FINALIZAR =====
+    // FINALIZAR
     if (interaction.customId.startsWith("finalizar_")) {
 
       const [, player1, player2] = interaction.customId.split("_");
