@@ -17,6 +17,7 @@ const {
 const TOKEN = process.env.TOKEN;
 const CLIENT_ID = process.env.CLIENT_ID;
 const GUILD_ID = process.env.GUILD_ID;
+const LOG_CHANNEL_ID = process.env.LOG_CHANNEL_ID;
 
 const client = new Client({
   intents: [
@@ -25,46 +26,49 @@ const client = new Client({
   ]
 });
 
-let fila = [];
-let configFila = {
-  tipo: "1v1",
-  valor: 2
+// =====================
+// CONFIG
+// =====================
+
+let config = {
+  tipo: "1v1"
 };
 
-// ======================
-// REGISTRAR COMANDOS
-// ======================
+const valores = [1, 2, 5, 10, 20, 50, 100];
+
+let filas = {};
+let painelMensagem = null;
+let vitorias = {};
+
+valores.forEach(v => {
+  filas[v] = [];
+});
+
+// =====================
+// COMANDOS
+// =====================
 
 const commands = [
 
   new SlashCommandBuilder()
-    .setName("fila")
-    .setDescription("Sistema de fila")
-    .addSubcommand(sub =>
-      sub.setName("configurar")
-        .setDescription("Configurar tipo e valor")
-        .addStringOption(option =>
-          option.setName("tipo")
-            .setDescription("1v1, 2v2, 3v3, 4v4")
-            .setRequired(true)
-            .addChoices(
-              { name: "1v1", value: "1v1" },
-              { name: "2v2", value: "2v2" },
-              { name: "3v3", value: "3v3" },
-              { name: "4v4", value: "4v4" }
-            ))
-        .addNumberOption(option =>
-          option.setName("valor")
-            .setDescription("Valor da aposta")
-            .setRequired(true)
-        )
-    )
-    .addSubcommand(sub =>
-      sub.setName("abrir")
-        .setDescription("Abrir painel da fila")
-    )
+    .setName("configurar")
+    .setDescription("Configurar tipo da partida (Admin)")
+    .addStringOption(option =>
+      option.setName("tipo")
+        .setDescription("Tipo")
+        .setRequired(true)
+        .addChoices(
+          { name: "1v1", value: "1v1" },
+          { name: "2v2", value: "2v2" },
+          { name: "3v3", value: "3v3" },
+          { name: "4v4", value: "4v4" }
+        )),
 
-].map(cmd => cmd.toJSON());
+  new SlashCommandBuilder()
+    .setName("painel")
+    .setDescription("Abrir painel de filas")
+
+].map(c => c.toJSON());
 
 const rest = new REST({ version: "10" }).setToken(TOKEN);
 
@@ -75,161 +79,182 @@ const rest = new REST({ version: "10" }).setToken(TOKEN);
   );
 })();
 
-// ======================
+// =====================
+// ATUALIZAR PAINEL
+// =====================
+
+async function atualizarPainel() {
+  if (!painelMensagem) return;
+
+  let descricao = `🎮 Tipo atual: ${config.tipo}\n\n`;
+
+  valores.forEach(v => {
+    descricao += `💰 R$${v} → ${filas[v].length}/2\n`;
+  });
+
+  const embed = new EmbedBuilder()
+    .setColor("Blue")
+    .setTitle("🔥 SISTEMA DE FILAS")
+    .setDescription(descricao);
+
+  await painelMensagem.edit({ embeds: [embed] });
+}
+
+// =====================
 // READY
-// ======================
+// =====================
 
 client.once("ready", () => {
   console.log(`🔥 Bot online como ${client.user.tag}`);
 });
 
-// ======================
+// =====================
 // INTERAÇÕES
-// ======================
+// =====================
 
 client.on("interactionCreate", async interaction => {
 
   if (!interaction.isChatInputCommand() && !interaction.isButton()) return;
 
-  // ===== SLASH =====
+  // ================= SLASH =================
+
   if (interaction.isChatInputCommand()) {
 
-    const sub = interaction.options.getSubcommand();
+    if (interaction.commandName === "configurar") {
 
-    // CONFIGURAR
-    if (sub === "configurar") {
+      if (!interaction.member.permissions.has(PermissionsBitField.Flags.Administrator))
+        return interaction.reply({ content: "❌ Apenas administradores.", ephemeral: true });
 
-      configFila.tipo = interaction.options.getString("tipo");
-      configFila.valor = interaction.options.getNumber("valor");
-      fila = [];
+      config.tipo = interaction.options.getString("tipo");
 
-      return interaction.reply(
-        `✅ Configurado: ${configFila.tipo} | R$ ${configFila.valor}\n⚠ Sempre fecha com 2 jogadores.`
-      );
+      return interaction.reply("✅ Tipo atualizado!");
     }
 
-    // ABRIR
-    if (sub === "abrir") {
+    if (interaction.commandName === "painel") {
+
+      let descricao = `🎮 Tipo atual: ${config.tipo}\n\n`;
+
+      valores.forEach(v => {
+        descricao += `💰 R$${v} → 0/2\n`;
+      });
 
       const embed = new EmbedBuilder()
         .setColor("Blue")
-        .setTitle(`🎮 FILA ${configFila.tipo}`)
-        .setDescription(
-          `💰 Valor: R$ ${configFila.valor}\n\n` +
-          `👥 Jogadores necessários: 2`
-        )
-        .setFooter({ text: `Na fila: ${fila.length}/2` });
+        .setTitle("🔥 SISTEMA DE FILAS")
+        .setDescription(descricao);
 
-      const row = new ActionRowBuilder().addComponents(
-        new ButtonBuilder()
-          .setCustomId("entrar_fila")
-          .setLabel("✅ Entrar")
-          .setStyle(ButtonStyle.Success),
+      const rows = [];
 
-        new ButtonBuilder()
-          .setCustomId("sair_fila")
-          .setLabel("🚪 Sair")
-          .setStyle(ButtonStyle.Danger)
-      );
+      for (let i = 0; i < valores.length; i += 5) {
+        const row = new ActionRowBuilder();
 
-      return interaction.reply({
+        valores.slice(i, i + 5).forEach(v => {
+          row.addComponents(
+            new ButtonBuilder()
+              .setCustomId(`fila_${v}`)
+              .setLabel(`R$${v}`)
+              .setStyle(ButtonStyle.Success)
+          );
+        });
+
+        rows.push(row);
+      }
+
+      painelMensagem = await interaction.reply({
         embeds: [embed],
-        components: [row]
+        components: rows,
+        fetchReply: true
       });
     }
   }
 
-  // ===== BOTÕES =====
+  // ================= BOTÕES =================
+
   if (interaction.isButton()) {
 
-    if (interaction.customId === "entrar_fila") {
+    if (interaction.customId.startsWith("fila_")) {
 
-      if (fila.includes(interaction.user.id)) {
-        return interaction.reply({ content: "Você já está na fila.", ephemeral: true });
-      }
+      const valor = interaction.customId.split("_")[1];
 
-      if (fila.length >= 2) {
-        return interaction.reply({ content: "Fila já está cheia.", ephemeral: true });
-      }
+      const fila = filas[valor];
+
+      if (fila.includes(interaction.user.id))
+        return interaction.reply({ content: "Você já está nessa fila.", ephemeral: true });
+
+      if (fila.length >= 2)
+        return interaction.reply({ content: "Fila cheia.", ephemeral: true });
 
       fila.push(interaction.user.id);
-      await interaction.reply({ content: "Você entrou na fila.", ephemeral: true });
+      await interaction.reply({ content: `Entrou na fila R$${valor}`, ephemeral: true });
 
-      // SEMPRE FECHA COM 2
+      atualizarPainel();
+
       if (fila.length === 2) {
 
         const guild = interaction.guild;
 
         const canal = await guild.channels.create({
-          name: `partida-${configFila.tipo}-${Date.now()}`,
+          name: `partida-${valor}-${Date.now()}`,
           type: ChannelType.GuildText,
           permissionOverwrites: [
-            {
-              id: guild.id,
-              deny: [PermissionsBitField.Flags.ViewChannel]
-            },
-            {
-              id: fila[0],
-              allow: [PermissionsBitField.Flags.ViewChannel]
-            },
-            {
-              id: fila[1],
-              allow: [PermissionsBitField.Flags.ViewChannel]
-            }
+            { id: guild.id, deny: [PermissionsBitField.Flags.ViewChannel] },
+            { id: fila[0], allow: [PermissionsBitField.Flags.ViewChannel] },
+            { id: fila[1], allow: [PermissionsBitField.Flags.ViewChannel] }
           ]
         });
 
-        const embedPartida = new EmbedBuilder()
+        const embed = new EmbedBuilder()
           .setColor("Green")
-          .setTitle("🔥 PARTIDA INICIADA")
-          .setDescription(
-            `🎮 Tipo: ${configFila.tipo}\n` +
-            `💰 Valor: R$ ${configFila.valor}\n\n` +
-            `Confirme o PIX e escolha o tipo de gel.`
-          );
+          .setTitle(`🔥 PARTIDA R$${valor}`)
+          .setDescription("Escolha o vencedor:");
 
-        const rowPartida = new ActionRowBuilder().addComponents(
+        const row = new ActionRowBuilder().addComponents(
           new ButtonBuilder()
-            .setCustomId("pix_confirmar")
-            .setLabel("💰 Confirmar PIX")
-            .setStyle(ButtonStyle.Success),
-
-          new ButtonBuilder()
-            .setCustomId("gel_normal")
-            .setLabel("🧊 Gel Normal")
+            .setCustomId(`win_${valor}_${fila[0]}`)
+            .setLabel("Vitória Player 1")
             .setStyle(ButtonStyle.Primary),
 
           new ButtonBuilder()
-            .setCustomId("gel_infinito")
-            .setLabel("♾️ Gel Infinito")
-            .setStyle(ButtonStyle.Secondary)
+            .setCustomId(`win_${valor}_${fila[1]}`)
+            .setLabel("Vitória Player 2")
+            .setStyle(ButtonStyle.Primary)
         );
 
         await canal.send({
           content: `<@${fila[0]}> <@${fila[1]}>`,
-          embeds: [embedPartida],
-          components: [rowPartida]
+          embeds: [embed],
+          components: [row]
         });
 
-        fila = [];
+        filas[valor] = [];
+        atualizarPainel();
       }
     }
 
-    if (interaction.customId === "sair_fila") {
-      fila = fila.filter(id => id !== interaction.user.id);
-      return interaction.reply({ content: "Você saiu da fila.", ephemeral: true });
-    }
+    // ================= VITÓRIA =================
 
-    if (interaction.customId === "pix_confirmar") {
-      return interaction.reply("✅ Pagamento confirmado manualmente.");
-    }
+    if (interaction.customId.startsWith("win_")) {
 
-    if (interaction.customId === "gel_normal") {
-      return interaction.reply("🧊 Gel Normal selecionado.");
-    }
+      const parts = interaction.customId.split("_");
+      const valor = parts[1];
+      const winnerId = parts[2];
 
-    if (interaction.customId === "gel_infinito") {
-      return interaction.reply("♾️ Gel Infinito selecionado.");
+      if (!vitorias[winnerId]) vitorias[winnerId] = 0;
+      vitorias[winnerId]++;
+
+      const logChannel = client.channels.cache.get(1471694293499514991);
+
+      if (logChannel) {
+        logChannel.send(
+          `🏆 Vitória: <@${winnerId}> | R$${valor} | Total vitórias: ${vitorias[winnerId]}`
+        );
+      }
+
+      await interaction.reply("✅ Partida finalizada! Canal será deletado.");
+
+      setTimeout(() => {
+        interaction.channel.delete().catch(() => {});
+      }, 5000);
     }
   }
 });
