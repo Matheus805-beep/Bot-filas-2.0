@@ -255,4 +255,4 @@ client.on("interactionCreate", async interaction => {
 
 });
 
-client.login(TOKEN);v
+client.login(TOKEN);
