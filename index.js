@@ -23,7 +23,7 @@ const client = new Client({
   intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers]
 });
 
-// 🔥 ORDEM DECRESCENTE
+// 🔥 FILAS ORDEM DECRESCENTE
 const valores = [100, 50, 20, 10, 5, 2, 1];
 
 let filas = {};
@@ -50,7 +50,7 @@ client.once("ready", () => {
   console.log(`🔥 Bot Online como ${client.user.tag}`);
 });
 
-// ================= ATUALIZAR EMBED =================
+// ================= FUNÇÃO ATUALIZAR EMBED =================
 
 async function atualizarEmbed(filaId) {
   const fila = filas[filaId];
@@ -77,81 +77,82 @@ async function atualizarEmbed(filaId) {
 client.on("interactionCreate", async interaction => {
 
   // ===== SLASH =====
-  if (interaction.isChatInputCommand()) {
+  if (interaction.isChatInputCommand() && interaction.commandName === "criarpainel") {
 
-    if (interaction.commandName === "criarpainel") {
-
-      // 🔒 Apenas ADMIN
-      if (!interaction.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
-        return interaction.reply({
-          content: "❌ Apenas administradores podem criar o painel.",
-          ephemeral: true
-        });
-      }
-
-      const menu = new StringSelectMenuBuilder()
-        .setCustomId("selecionar_tipo")
-        .setPlaceholder("Escolha o tipo")
-        .addOptions([
-          { label: "1v1", value: "1v1" },
-          { label: "2v2", value: "2v2" },
-          { label: "3v3", value: "3v3" },
-          { label: "4v4", value: "4v4" }
-        ]);
-
-      const row = new ActionRowBuilder().addComponents(menu);
-
+    // 🔒 Apenas ADMIN
+    if (!interaction.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
       return interaction.reply({
-        content: "🎮 Escolha o tipo:",
-        components: [row],
+        content: "❌ Apenas administradores podem criar o painel.",
         ephemeral: true
       });
     }
+
+    // Menu para escolher tipo
+    const menu = new StringSelectMenuBuilder()
+      .setCustomId("selecionar_tipo")
+      .setPlaceholder("Escolha o tipo")
+      .addOptions([
+        { label: "1v1", value: "1v1" },
+        { label: "2v2", value: "2v2" },
+        { label: "3v3", value: "3v3" },
+        { label: "4v4", value: "4v4" }
+      ]);
+
+    const row = new ActionRowBuilder().addComponents(menu);
+
+    // ✅ Resposta imediata
+    await interaction.reply({
+      content: "🎮 Escolha o tipo:",
+      components: [row],
+      ephemeral: true
+    });
   }
 
-  // ===== MENU SELEÇÃO =====
+  // ===== MENU =====
   if (interaction.isStringSelectMenu() && interaction.customId === "selecionar_tipo") {
 
     const tipo = interaction.values[0];
 
-    // ✅ Responde imediatamente para evitar "interação falhou"
+    // ✅ Responde imediatamente
     await interaction.reply({
-      content: `✅ Painel ${tipo} está sendo criado...`,
+      content: `✅ Painel ${tipo} está sendo criado em background...`,
       ephemeral: true
     });
 
-    // Criar filas em background
-    for (const valor of valores) {
+    // Criar filas em background usando setTimeout para não travar interação
+    setTimeout(async () => {
+      for (const valor of valores) {
 
-      const filaId = `${tipo}_${valor}_${Date.now()}`;
-      filas[filaId] = [];
+        const filaId = `${tipo}_${valor}_${Date.now()}`;
+        filas[filaId] = [];
 
-      const embed = new EmbedBuilder()
-        .setColor("Blue")
-        .setTitle(`🎮 ${tipo}`)
-        .setDescription(
-          `💰 Valor: R$${valor}\n👥 Jogadores (0/2):\nNenhum jogador na fila`
+        const embed = new EmbedBuilder()
+          .setColor("Blue")
+          .setTitle(`🎮 ${tipo}`)
+          .setDescription(
+            `💰 Valor: R$${valor}\n👥 Jogadores (0/2):\nNenhum jogador na fila`
+          );
+
+        const botoes = new ActionRowBuilder().addComponents(
+          new ButtonBuilder()
+            .setCustomId(`entrar_${filaId}`)
+            .setLabel("Entrar")
+            .setStyle(ButtonStyle.Success),
+
+          new ButtonBuilder()
+            .setCustomId(`sair_${filaId}`)
+            .setLabel("Sair")
+            .setStyle(ButtonStyle.Danger)
         );
 
-      const botoes = new ActionRowBuilder().addComponents(
-        new ButtonBuilder()
-          .setCustomId(`entrar_${filaId}`)
-          .setLabel("Entrar")
-          .setStyle(ButtonStyle.Success),
+        const mensagem = await interaction.channel.send({
+          embeds: [embed],
+          components: [botoes]
+        });
 
-        new ButtonBuilder()
-          .setCustomId(`sair_${filaId}`)
-          .setLabel("Sair")
-          .setStyle(ButtonStyle.Danger)
-      );
-
-      const mensagem = await interaction.channel.send({
-        embeds: [embed],
-        components: [botoes]
-      });
-
-      mensagensFilas[filaId] = mensagem;
-    }
+        mensagensFilas[filaId] = mensagem;
+      }
+    }, 100); // pequeno delay para liberar interação
   }
 
   // ===== BOTÕES =====
