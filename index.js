@@ -3,16 +3,15 @@ require("dotenv").config();
 const {
   Client,
   GatewayIntentBits,
-  SlashCommandBuilder,
-  Routes,
-  REST,
   EmbedBuilder,
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
-  StringSelectMenuBuilder,
   ChannelType,
-  PermissionsBitField
+  PermissionsBitField,
+  SlashCommandBuilder,
+  Routes,
+  REST
 } = require("discord.js");
 
 const TOKEN = process.env.TOKEN;
@@ -23,15 +22,12 @@ const client = new Client({
   intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers]
 });
 
-// Ordem decrescente das filas
 const valores = [100, 50, 20, 10, 5, 2, 1];
-
 let filas = {};
 let mensagensFilas = {};
-let modosFilas = {}; // guarda o modo de cada fila
+let modosFilas = {};
 
 // ================= COMANDO =================
-
 const commands = [
   new SlashCommandBuilder()
     .setName("criarpainel")
@@ -52,11 +48,10 @@ client.once("ready", () => {
 });
 
 // ================= FUNÇÃO ATUALIZAR EMBED =================
-
 async function atualizarEmbed(filaId) {
   const fila = filas[filaId];
   const msg = mensagensFilas[filaId];
-  const modo = modosFilas[filaId] || "NORMAL";
+  const modo = modosFilas[filaId] || "NENHUM";
   if (!msg) return;
 
   const jogadores = fila.length
@@ -67,129 +62,71 @@ async function atualizarEmbed(filaId) {
     .setColor("Blue")
     .setTitle(msg.embeds[0].data.title)
     .setDescription(
-      msg.embeds[0].data.description.split("\n")[0] +
-      `\nModo: ${modo}\n👥 Jogadores (${fila.length}/2):\n${jogadores}`
+      `💰 Valor: ${msg.embeds[0].data.description.split("\n")[0].replace("💰 Valor: ", "")}\n` +
+      `Modo: ${modo}\n👥 Jogadores (${fila.length}/2):\n${jogadores}`
     );
 
   await msg.edit({ embeds: [embed] });
 }
 
 // ================= INTERAÇÕES =================
-
 client.on("interactionCreate", async interaction => {
 
   // ===== SLASH =====
   if (interaction.isChatInputCommand() && interaction.commandName === "criarpainel") {
 
     if (!interaction.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
-      return interaction.reply({
-        content: "❌ Apenas administradores podem criar o painel.",
-        ephemeral: true
-      });
+      return interaction.reply({ content: "❌ Apenas admins podem criar painel.", ephemeral: true });
     }
 
-    // Menu de tipo
-    const menuTipo = new StringSelectMenuBuilder()
-      .setCustomId("selecionar_tipo")
-      .setPlaceholder("Escolha o tipo")
-      .addOptions([
-        { label: "1v1", value: "1v1" },
-        { label: "2v2", value: "2v2" },
-        { label: "3v3", value: "3v3" },
-        { label: "4v4", value: "4v4" }
-      ]);
+    // Resposta imediata para evitar "interação falhou"
+    await interaction.reply({ content: "✅ Painel sendo criado...", ephemeral: true });
 
-    const rowTipo = new ActionRowBuilder().addComponents(menuTipo);
-
-    await interaction.deferReply({ ephemeral: true });
-    await interaction.editReply({
-      content: "🎮 Escolha o tipo da fila:",
-      components: [rowTipo]
-    });
-  }
-
-  // ===== MENU TIPO =====
-  if (interaction.isStringSelectMenu() && interaction.customId === "selecionar_tipo") {
-
-    const tipo = interaction.values[0];
-
-    // Menu de modo
-    const menuModo = new StringSelectMenuBuilder()
-      .setCustomId("selecionar_modo")
-      .setPlaceholder("Escolha o modo")
-      .addOptions([
-        { label: "GEL NORMAL", value: "NORMAL" },
-        { label: "GEL INFINITO", value: "INFINITO" }
-      ]);
-
-    const rowModo = new ActionRowBuilder().addComponents(menuModo);
-
-    await interaction.deferReply({ ephemeral: true });
-    await interaction.editReply({
-      content: `✅ Tipo ${tipo} selecionado! Agora escolha o modo:`,
-      components: [rowModo]
-    });
-
-    // Salva temporariamente o tipo na interação
-    interaction.user.tipoSelecionado = tipo;
-  }
-
-  // ===== MENU MODO =====
-  if (interaction.isStringSelectMenu() && interaction.customId === "selecionar_modo") {
-
-    const modo = interaction.values[0];
-    const tipo = interaction.user.tipoSelecionado || "1v1";
-
-    await interaction.deferReply({ ephemeral: true });
-    await interaction.editReply({
-      content: `✅ Painel ${tipo} criado no modo ${modo}! Filas prontas.`,
-      components: []
-    });
-
-    // Criar todas as filas imediatamente
+    // Criar todas as filas de uma vez
     for (const valor of valores) {
-      const filaId = `${tipo}_${valor}_${Date.now()}`;
+      const filaId = `fila_${valor}_${Date.now()}`;
       filas[filaId] = [];
-      modosFilas[filaId] = modo;
+      modosFilas[filaId] = "NENHUM";
 
       const embed = new EmbedBuilder()
         .setColor("Blue")
-        .setTitle(`🎮 ${tipo}`)
-        .setDescription(`💰 Valor: R$${valor}\nModo: ${modo}\n👥 Jogadores (0/2):\nNenhum jogador na fila`);
+        .setTitle(`🎮 Fila R$${valor}`)
+        .setDescription(`💰 Valor: ${valor}\nModo: NENHUM\n👥 Jogadores (0/2):\nNenhum jogador na fila`);
 
       const botoes = new ActionRowBuilder().addComponents(
         new ButtonBuilder()
-          .setCustomId(`entrar_${filaId}`)
-          .setLabel("Entrar")
+          .setCustomId(`entrar_infinito_${filaId}`)
+          .setLabel("GEL INFINITO")
           .setStyle(ButtonStyle.Success),
         new ButtonBuilder()
+          .setCustomId(`entrar_normal_${filaId}`)
+          .setLabel("GEL NORMAL")
+          .setStyle(ButtonStyle.Primary),
+        new ButtonBuilder()
           .setCustomId(`sair_${filaId}`)
-          .setLabel("Sair")
+          .setLabel("SAIR")
           .setStyle(ButtonStyle.Danger)
       );
 
-      const mensagem = await interaction.channel.send({
-        embeds: [embed],
-        components: [botoes]
-      });
-
+      const mensagem = await interaction.channel.send({ embeds: [embed], components: [botoes] });
       mensagensFilas[filaId] = mensagem;
     }
   }
 
   // ===== BOTÕES =====
   if (interaction.isButton()) {
-
-    const [acao, filaId] = interaction.customId.split("_");
+    const [acao, modoOuNada, filaId] = interaction.customId.split("_");
     const fila = filas[filaId];
     if (!fila) return;
 
+    // SAIR da fila
     if (acao === "sair") {
       filas[filaId] = fila.filter(id => id !== interaction.user.id);
       await interaction.reply({ content: "Você saiu da fila.", ephemeral: true });
       return atualizarEmbed(filaId);
     }
 
+    // Entrar em fila (infinito ou normal)
     if (acao === "entrar") {
       if (fila.includes(interaction.user.id))
         return interaction.reply({ content: "Você já está na fila.", ephemeral: true });
@@ -198,15 +135,13 @@ client.on("interactionCreate", async interaction => {
         return interaction.reply({ content: "Fila cheia.", ephemeral: true });
 
       fila.push(interaction.user.id);
-
-      await interaction.reply({ content: "Entrou na fila!", ephemeral: true });
+      modosFilas[filaId] = modoOuNada.toUpperCase(); 
+      await interaction.reply({ content: `Você entrou na fila (${modoOuNada.toUpperCase()})!`, ephemeral: true });
       atualizarEmbed(filaId);
 
-      // Quando 2 players entram
+      // Quando 2 players entram → cria canal privado
       if (fila.length === 2) {
-
         const guild = interaction.guild;
-
         const canal = await guild.channels.create({
           name: `partida-${Date.now()}`,
           type: ChannelType.GuildText,
@@ -225,7 +160,7 @@ client.on("interactionCreate", async interaction => {
         );
 
         await canal.send({
-          content: `🔥 Partida iniciada!\nModo: ${modosFilas[filaId]}\n<@${fila[0]}> vs <@${fila[1]}>`,
+          content: `🔥 Partida iniciada!\nModo: ${modoOuNada.toUpperCase()}\n<@${fila[0]}> vs <@${fila[1]}>`,
           components: [finalizarBtn]
         });
 
@@ -233,24 +168,20 @@ client.on("interactionCreate", async interaction => {
         atualizarEmbed(filaId);
       }
     }
-  }
 
-  // ===== FINALIZAR =====
-  if (interaction.isButton() && interaction.customId.startsWith("finalizar_partida")) {
+    // Finalizar partida
+    if (interaction.customId.startsWith("finalizar_partida")) {
+      const [_, player1, player2] = interaction.customId.split("_");
+      if (![player1, player2].includes(interaction.user.id)) {
+        return interaction.reply({ content: "❌ Apenas jogadores podem finalizar.", ephemeral: true });
+      }
 
-    const [_, player1, player2] = interaction.customId.split("_");
-
-    if (![player1, player2].includes(interaction.user.id)) {
-      return interaction.reply({ content: "❌ Apenas os jogadores da partida podem finalizar.", ephemeral: true });
+      await interaction.reply("✅ Partida finalizada! Canal será apagado em 5 segundos.");
+      setTimeout(() => {
+        interaction.channel.delete().catch(() => {});
+      }, 5000);
     }
-
-    await interaction.reply("✅ Partida finalizada! Canal será apagado em 5 segundos.");
-
-    setTimeout(() => {
-      interaction.channel.delete().catch(() => {});
-    }, 5000);
   }
-
 });
 
 client.login(TOKEN);
