@@ -10,218 +10,228 @@ const {
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
-  ChannelType
+  ChannelType,
+  PermissionsBitField
 } = require("discord.js");
 
 const TOKEN = process.env.TOKEN;
 const CLIENT_ID = process.env.CLIENT_ID;
 const GUILD_ID = process.env.GUILD_ID;
 
-if (!TOKEN) {
-  console.error("TOKEN não definido.");
-  process.exit(1);
-}
-
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
-    GatewayIntentBits.GuildMessages,
     GatewayIntentBits.GuildMembers
   ]
 });
 
-const ranking = {};
-const historico = [];
-const LOG_CHANNEL_NAME = "📜-logs-apostado";
+let fila = [];
+let configFila = {
+  tipo: "1v1",
+  valor: 2
+};
 
-// ========================
-// REGISTRAR SLASH COMMANDS
-// ========================
+// ======================
+// REGISTRAR COMANDOS
+// ======================
 
 const commands = [
-  new SlashCommandBuilder()
-    .setName("partida")
-    .setDescription("Criar partida apostada")
-    .addStringOption(option =>
-      option.setName("modo")
-        .setDescription("1v1, 2v2, 3v3 ou 4v4")
-        .setRequired(true)
-    )
-    .addIntegerOption(option =>
-      option.setName("valor")
-        .setDescription("Valor da aposta")
-        .setRequired(true)
-    )
-    .addUserOption(option =>
-      option.setName("jogador1")
-        .setDescription("Primeiro jogador")
-        .setRequired(true)
-    )
-    .addUserOption(option =>
-      option.setName("jogador2")
-        .setDescription("Segundo jogador")
-        .setRequired(true)
-    ),
 
   new SlashCommandBuilder()
-    .setName("ranking")
-    .setDescription("Ver ranking da organização")
+    .setName("fila")
+    .setDescription("Sistema de fila")
+    .addSubcommand(sub =>
+      sub.setName("configurar")
+        .setDescription("Configurar tipo e valor")
+        .addStringOption(option =>
+          option.setName("tipo")
+            .setDescription("1v1, 2v2, 3v3, 4v4")
+            .setRequired(true)
+            .addChoices(
+              { name: "1v1", value: "1v1" },
+              { name: "2v2", value: "2v2" },
+              { name: "3v3", value: "3v3" },
+              { name: "4v4", value: "4v4" }
+            ))
+        .addNumberOption(option =>
+          option.setName("valor")
+            .setDescription("Valor da aposta")
+            .setRequired(true)
+        )
+    )
+    .addSubcommand(sub =>
+      sub.setName("abrir")
+        .setDescription("Abrir painel da fila")
+    )
+
 ].map(cmd => cmd.toJSON());
 
 const rest = new REST({ version: "10" }).setToken(TOKEN);
 
 (async () => {
-  try {
-    await rest.put(
-      Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID),
-      { body: commands }
-    );
-    console.log("Slash commands registrados.");
-  } catch (err) {
-    console.error(err);
-  }
+  await rest.put(
+    Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID),
+    { body: commands }
+  );
 })();
 
-// ========================
-// CRIAR CANAL DE LOG
-// ========================
-
-async function getLogChannel(guild) {
-  let canal = guild.channels.cache.find(c => c.name === LOG_CHANNEL_NAME);
-
-  if (!canal) {
-    canal = await guild.channels.create({
-      name: LOG_CHANNEL_NAME,
-      type: ChannelType.GuildText
-    });
-  }
-
-  return canal;
-}
-
-// ========================
-// BOT ONLINE
-// ========================
+// ======================
+// READY
+// ======================
 
 client.once("ready", () => {
-  console.log(`Bot online como ${client.user.tag}`);
+  console.log(`🔥 Bot online como ${client.user.tag}`);
 });
 
-// ========================
+// ======================
 // INTERAÇÕES
-// ========================
+// ======================
 
 client.on("interactionCreate", async interaction => {
 
+  if (!interaction.isChatInputCommand() && !interaction.isButton()) return;
+
+  // ===== SLASH =====
   if (interaction.isChatInputCommand()) {
 
-    // ===== CRIAR PARTIDA =====
-    if (interaction.commandName === "partida") {
+    const sub = interaction.options.getSubcommand();
 
-      const modo = interaction.options.getString("modo");
-      const valor = interaction.options.getInteger("valor");
-      const jogador1 = interaction.options.getUser("jogador1");
-      const jogador2 = interaction.options.getUser("jogador2");
+    // CONFIGURAR
+    if (sub === "configurar") {
 
-      historico.push({
-        modo,
-        valor,
-        jogadores: [jogador1.id, jogador2.id]
-      });
+      configFila.tipo = interaction.options.getString("tipo");
+      configFila.valor = interaction.options.getNumber("valor");
+      fila = [];
+
+      return interaction.reply(
+        `✅ Configurado: ${configFila.tipo} | R$ ${configFila.valor}\n⚠ Sempre fecha com 2 jogadores.`
+      );
+    }
+
+    // ABRIR
+    if (sub === "abrir") {
 
       const embed = new EmbedBuilder()
-        .setColor("Green")
-        .setTitle("🔥 PARTIDA CRIADA")
-        .addFields(
-          { name: "Modo", value: modo, inline: true },
-          { name: "Valor", value: `R$ ${valor}`, inline: true },
-          { name: "Jogadores", value: `${jogador1} vs ${jogador2}` }
+        .setColor("Blue")
+        .setTitle(`🎮 FILA ${configFila.tipo}`)
+        .setDescription(
+          `💰 Valor: R$ ${configFila.valor}\n\n` +
+          `👥 Jogadores necessários: 2`
         )
-        .setFooter({ text: "Aguardando confirmação PIX" });
+        .setFooter({ text: `Na fila: ${fila.length}/2` });
 
       const row = new ActionRowBuilder().addComponents(
         new ButtonBuilder()
-          .setCustomId(`confirmar_${valor}`)
-          .setLabel("Confirmar Pagamento")
+          .setCustomId("entrar_fila")
+          .setLabel("✅ Entrar")
           .setStyle(ButtonStyle.Success),
 
         new ButtonBuilder()
-          .setCustomId(`cancelar_${valor}`)
-          .setLabel("Cancelar")
+          .setCustomId("sair_fila")
+          .setLabel("🚪 Sair")
           .setStyle(ButtonStyle.Danger)
       );
 
-      await interaction.reply({
+      return interaction.reply({
         embeds: [embed],
         components: [row]
       });
-    }
-
-    // ===== RANKING =====
-    if (interaction.commandName === "ranking") {
-
-      if (Object.keys(ranking).length === 0) {
-        return interaction.reply("Ranking vazio.");
-      }
-
-      let texto = "🏆 Ranking Atual:\n\n";
-
-      const ordenado = Object.entries(ranking)
-        .sort((a, b) => b[1].vitorias - a[1].vitorias);
-
-      ordenado.forEach(([id, stats], index) => {
-        texto += `${index + 1}. <@${id}> - ${stats.vitorias}V | ${stats.derrotas}D\n`;
-      });
-
-      interaction.reply(texto);
     }
   }
 
   // ===== BOTÕES =====
   if (interaction.isButton()) {
 
-    const ultimaPartida = historico[historico.length - 1];
-    if (!ultimaPartida) return;
+    if (interaction.customId === "entrar_fila") {
 
-    const valor = ultimaPartida.valor;
-    const [j1, j2] = ultimaPartida.jogadores;
+      if (fila.includes(interaction.user.id)) {
+        return interaction.reply({ content: "Você já está na fila.", ephemeral: true });
+      }
 
-    if (interaction.customId.startsWith("confirmar")) {
+      if (fila.length >= 2) {
+        return interaction.reply({ content: "Fila já está cheia.", ephemeral: true });
+      }
 
-      const vencedor = j1;
-      const perdedor = j2;
+      fila.push(interaction.user.id);
+      await interaction.reply({ content: "Você entrou na fila.", ephemeral: true });
 
-      if (!ranking[vencedor]) ranking[vencedor] = { vitorias: 0, derrotas: 0 };
-      if (!ranking[perdedor]) ranking[perdedor] = { vitorias: 0, derrotas: 0 };
+      // SEMPRE FECHA COM 2
+      if (fila.length === 2) {
 
-      ranking[vencedor].vitorias++;
-      ranking[perdedor].derrotas++;
+        const guild = interaction.guild;
 
-      const logChannel = await getLogChannel(interaction.guild);
+        const canal = await guild.channels.create({
+          name: `partida-${configFila.tipo}-${Date.now()}`,
+          type: ChannelType.GuildText,
+          permissionOverwrites: [
+            {
+              id: guild.id,
+              deny: [PermissionsBitField.Flags.ViewChannel]
+            },
+            {
+              id: fila[0],
+              allow: [PermissionsBitField.Flags.ViewChannel]
+            },
+            {
+              id: fila[1],
+              allow: [PermissionsBitField.Flags.ViewChannel]
+            }
+          ]
+        });
 
-      await logChannel.send(
-        `📜 PARTIDA CONFIRMADA\n💰 R$ ${valor}\n🏆 Vencedor: <@${vencedor}>\n❌ Perdedor: <@${perdedor}>`
-      );
+        const embedPartida = new EmbedBuilder()
+          .setColor("Green")
+          .setTitle("🔥 PARTIDA INICIADA")
+          .setDescription(
+            `🎮 Tipo: ${configFila.tipo}\n` +
+            `💰 Valor: R$ ${configFila.valor}\n\n` +
+            `Confirme o PIX e escolha o tipo de gel.`
+          );
 
-      await interaction.update({
-        content: "✅ Pagamento confirmado e ranking atualizado.",
-        embeds: [],
-        components: []
-      });
+        const rowPartida = new ActionRowBuilder().addComponents(
+          new ButtonBuilder()
+            .setCustomId("pix_confirmar")
+            .setLabel("💰 Confirmar PIX")
+            .setStyle(ButtonStyle.Success),
+
+          new ButtonBuilder()
+            .setCustomId("gel_normal")
+            .setLabel("🧊 Gel Normal")
+            .setStyle(ButtonStyle.Primary),
+
+          new ButtonBuilder()
+            .setCustomId("gel_infinito")
+            .setLabel("♾️ Gel Infinito")
+            .setStyle(ButtonStyle.Secondary)
+        );
+
+        await canal.send({
+          content: `<@${fila[0]}> <@${fila[1]}>`,
+          embeds: [embedPartida],
+          components: [rowPartida]
+        });
+
+        fila = [];
+      }
     }
 
-    if (interaction.customId.startsWith("cancelar")) {
-      await interaction.update({
-        content: "❌ Partida cancelada.",
-        embeds: [],
-        components: []
-      });
+    if (interaction.customId === "sair_fila") {
+      fila = fila.filter(id => id !== interaction.user.id);
+      return interaction.reply({ content: "Você saiu da fila.", ephemeral: true });
+    }
+
+    if (interaction.customId === "pix_confirmar") {
+      return interaction.reply("✅ Pagamento confirmado manualmente.");
+    }
+
+    if (interaction.customId === "gel_normal") {
+      return interaction.reply("🧊 Gel Normal selecionado.");
+    }
+
+    if (interaction.customId === "gel_infinito") {
+      return interaction.reply("♾️ Gel Infinito selecionado.");
     }
   }
 });
-
-// ========================
-// LOGIN
-// ========================
 
 client.login(TOKEN);
