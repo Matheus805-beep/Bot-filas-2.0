@@ -23,7 +23,8 @@ const client = new Client({
   intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers]
 });
 
-const valores = [1, 2, 5, 10, 20, 50, 100];
+// 🔥 ORDEM DECRESCENTE
+const valores = [100, 50, 20, 10, 5, 2, 1];
 
 let filas = {};
 let mensagensFilas = {};
@@ -80,7 +81,6 @@ client.on("interactionCreate", async interaction => {
 
     if (interaction.commandName === "criarpainel") {
 
-      // 🔒 SOMENTE ADMIN
       if (!interaction.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
         return interaction.reply({
           content: "❌ Apenas administradores podem criar o painel.",
@@ -108,7 +108,7 @@ client.on("interactionCreate", async interaction => {
     }
   }
 
-  // ===== MENU SELEÇÃO =====
+  // ===== MENU =====
   if (interaction.isStringSelectMenu()) {
 
     if (interaction.customId === "selecionar_tipo") {
@@ -212,7 +212,7 @@ client.on("interactionCreate", async interaction => {
     }
   }
 
-  // ===== FINALIZAR PARTIDA =====
+  // ===== FINALIZAR =====
   if (interaction.isButton() && interaction.customId === "finalizar_partida") {
 
     await interaction.reply("✅ Partida finalizada! Canal será apagado em 5 segundos.");
