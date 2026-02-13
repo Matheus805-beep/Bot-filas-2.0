@@ -16,10 +16,8 @@ const {
 // ====== CONFIGURE AQUI ======
 const TOKEN = "SEU_TOKEN_AQUI";
 const CLIENT_ID = "SEU_CLIENT_ID_AQUI";
-
-const GUILD_1 = "ID_DO_SERVIDOR_1";
-const GUILD_2 = "ID_DO_SERVIDOR_2";
-// =============================
+const GUILD_ID = "SEU_ID_DO_SERVIDOR";
+// ============================
 
 const client = new Client({
   intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers]
@@ -31,7 +29,7 @@ let filas = {};
 let mensagens = {};
 let modoServidor = {};
 
-// ===== REGISTRAR SLASH NOS 2 SERVIDORES =====
+// ===== REGISTRAR SLASH =====
 const commands = [
   new SlashCommandBuilder()
     .setName("criarpainel")
@@ -42,23 +40,17 @@ const rest = new REST({ version: "10" }).setToken(TOKEN);
 
 (async () => {
   await rest.put(
-    Routes.applicationGuildCommands(CLIENT_ID, GUILD_1),
+    Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID),
     { body: commands }
   );
-  console.log("✅ Registrado no servidor 1");
-
-  await rest.put(
-    Routes.applicationGuildCommands(CLIENT_ID, GUILD_2),
-    { body: commands }
-  );
-  console.log("✅ Registrado no servidor 2");
+  console.log("✅ Slash registrado!");
 })();
 
 client.once("ready", () => {
   console.log(`🔥 Bot online como ${client.user.tag}`);
 });
 
-// ===== ATUALIZAR EMBED =====
+// ===== FUNÇÃO ATUALIZAR EMBED =====
 async function atualizarEmbed(idBase, guildId) {
 
   const msg = mensagens[idBase];
